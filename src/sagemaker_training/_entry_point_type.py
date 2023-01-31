@@ -16,6 +16,7 @@ script, bash script, etc.)
 """
 import enum
 import os
+from pathlib import Path
 
 
 class _EntryPointType(enum.Enum):
@@ -24,10 +25,12 @@ class _EntryPointType(enum.Enum):
     PYTHON_PACKAGE = "PYTHON_PACKAGE"
     PYTHON_PROGRAM = "PYTHON_PROGRAM"
     COMMAND = "COMMAND"
+    EXECUTABLE = "EXECUTABLE"
 
 
 PYTHON_PACKAGE = _EntryPointType.PYTHON_PACKAGE
 PYTHON_PROGRAM = _EntryPointType.PYTHON_PROGRAM
+EXECUTABLE = _EntryPointType.EXECUTABLE
 COMMAND = _EntryPointType.COMMAND
 
 
@@ -40,11 +43,14 @@ def get(path, name):  # type: (str, str) -> _EntryPointType
     Returns:
         (_EntryPointType): The type of the entry point.
     """
-    if name.endswith(".sh"):
-        return _EntryPointType.COMMAND
-    elif "setup.py" in os.listdir(path):
+    entry_point_file = Path(path) / name
+    if "setup.py" in os.listdir(path):
         return _EntryPointType.PYTHON_PACKAGE
     elif name.endswith(".py"):
         return _EntryPointType.PYTHON_PROGRAM
+    if entry_point_file.exists() and os.access(entry_point_file, os.X_OK):
+        return _EntryPointType.EXECUTABLE
+    if name.endswith(".sh"):
+        return _EntryPointType.COMMAND
     else:
         return _EntryPointType.COMMAND

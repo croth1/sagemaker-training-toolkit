@@ -21,6 +21,7 @@ from inspect import getmembers
 from inspect import isclass
 from contextlib import contextmanager
 import os
+from pathlib import Path
 import re
 import signal
 import subprocess
@@ -401,6 +402,9 @@ class ProcessRunner(object):
             return self._python_command() + ["-m", entry_module] + self._args
         elif entrypoint_type is _entry_point_type.PYTHON_PROGRAM:
             return self._python_command() + [self._user_entry_point] + self._args
+        elif entrypoint_type is _entry_point_type.EXECUTABLE:
+            entry_point_path = Path(environment.code_dir) / self._user_entry_point
+            return [str(entry_point_path)] + self._args
         else:
             args = [
                 six.moves.shlex_quote(arg)  # pylint: disable=too-many-function-args
