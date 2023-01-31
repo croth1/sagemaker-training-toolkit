@@ -20,7 +20,9 @@ from asyncio.subprocess import PIPE
 from inspect import getmembers
 from inspect import isclass
 import os
+from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 
@@ -306,7 +308,16 @@ def check_error(cmd, error_classes, processes_per_host, cwd=None, capture_error=
             stderr=stderr,
             **kwargs,
         )
+
+        def forward_SIGTERM(sig, frame):
+            process.send_signal(signal.SIGTERM)
+            logger.info("received SIGTERM, forwarding to child process.")
+        sigterm_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGTERM, forward_SIGTERM)
+
         return_code = process.wait()
+        signal.signal(signal.SIGTERM, sigterm_handler)
+
     if return_code:
         extra_info = None
         if return_code == 137:
@@ -379,6 +390,9 @@ class ProcessRunner(object):
             return self._python_command() + ["-m", entry_module] + self._args
         elif entrypoint_type is _entry_point_type.PYTHON_PROGRAM:
             return self._python_command() + [self._user_entry_point] + self._args
+        elif entrypoint_type is _entry_point_type.EXECUTABLE:
+            entry_point_path = Path(environment.code_dir) / self._user_entry_point
+            return [str(entry_point_path)] + self._args
         else:
             args = [
                 six.moves.shlex_quote(arg)  # pylint: disable=too-many-function-args
