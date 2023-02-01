@@ -19,8 +19,10 @@ import asyncio
 from asyncio.subprocess import PIPE
 from inspect import getmembers
 from inspect import isclass
+from contextlib import contextmanager
 import os
 import re
+import signal
 import subprocess
 import sys
 
@@ -106,6 +108,24 @@ def process_error_classes(error_classes):
     if not isinstance(error_classes, list):
         error_classes = [error_classes]
     return [error.__name__ if isclass(error) else error for error in error_classes]
+
+
+@contextmanager
+def capture_signal(signalnum, callback):
+    """
+    Install handler to capture signal
+
+    Args:
+        signalnum: signal to capture
+        callback: callback if signal occurs
+
+    """
+    original_handler = signal.getsignal(signalnum)
+    signal.signal(signalnum, callback)
+    try:
+        yield
+    finally:
+        signal.signal(signalnum, original_handler)
 
 
 async def watch(stream, proc_per_host, error_classes=None):
@@ -204,10 +224,11 @@ async def run_async(cmd, processes_per_host, env, cwd, stderr, error_classes=Non
         cmd, env=env, cwd=cwd, stdout=PIPE, stderr=stderr, **kwargs
     )
 
-    output = await asyncio.gather(
-        watch(proc.stdout, processes_per_host, error_classes=error_classes),
-        watch(proc.stderr, processes_per_host, error_classes=error_classes),
-    )
+    with capture_signal(signal.SIGTERM, lambda signalnum, *_: proc.send_signal(signalnum)):
+        output = await asyncio.gather(
+            watch(proc.stdout, processes_per_host, error_classes=error_classes),
+            watch(proc.stderr, processes_per_host, error_classes=error_classes),
+        )
     logger.info("Waiting for the process to finish and give a return code.")
     return_code = await proc.wait()
     logger.info(f"Done waiting for a return code. Received {return_code} from exiting process.")
@@ -306,7 +327,8 @@ def check_error(cmd, error_classes, processes_per_host, cwd=None, capture_error=
             stderr=stderr,
             **kwargs,
         )
-        return_code = process.wait()
+        with capture_signal(signal.SIGTERM, lambda signalnum, *_: process.send_signal(signalnum)):
+            return_code = process.wait()
     if return_code:
         extra_info = None
         if return_code == 137:
